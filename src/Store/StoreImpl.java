@@ -86,7 +86,7 @@ public class StoreImpl extends DSMSPOA {
                 // If client in another store
                 else{
                     int port = this.ports.get(clientID.substring(0,2));
-                    String cmd = "PURCHASE-ITEM,"+ clientID + "," +itemID+ ","+new Date().toString();
+                    String cmd = "PURCHASE-ITEM,"+ clientID + "," + itemID + "," + new Date().toString();
                     this.sendCommand(port, cmd);
                 }
             }
@@ -215,7 +215,7 @@ public class StoreImpl extends DSMSPOA {
         	// If purchase is foreign send purchase request to the UDP server for the specific store
             logger.info("Customer " + customerID + " purchasing an item in foreign store " + purchase_store);
                 logger.info("Sending UDP command to " + purchase_store + " store...");
-                String cmd = "PURCHASE-ITEM" + "," + customerID + "," + customer.getBalance() + "," + itemID + "," + dateOfPurchase;
+                String cmd = "PURCHASE-ITEM-FOREIGN" + "," + customerID + "," + customer.getBalance() + "," + itemID + "," + dateOfPurchase;
                 String response = this.sendCommand(this.ports.get(itemID.substring(0, 2)), cmd);
                 if (response.startsWith("Purchased")) {
                     long remaining_balance = Long.parseLong(response.split(",")[1].trim());
@@ -458,5 +458,62 @@ public class StoreImpl extends DSMSPOA {
         return response;
 		
 	}
+	public void receive() throws NumberFormatException, ParseException{
+        DatagramSocket aSocket = null;
+        try {
+            aSocket = new DatagramSocket(this.ports.get(this.store.toString()));
+            byte[] buffer = new byte[1000];
+            System.out.println("UDP Server "+this.store.toString() + " has started listening...");
+            String replyMessage = null;
+            while (true) {
+                DatagramPacket request = new DatagramPacket(buffer, buffer.length);
+                aSocket.receive(request);
+                String[] requestArgs = new String(request.getData()).split(",");
+                if(requestArgs[0].equals("PURCHASE-ITEM-FOREIGN]")){
+                    String customerID = requestArgs[1];
+                    int balance = Integer.parseInt(requestArgs[2]);
+                    String itemID = requestArgs[3];
+                    String date = requestArgs[4];
+                    replyMessage = this.ForeignPurchaseItem(customerID, balance, itemID, date);
+                }else if(requestArgs[0].equals("WAITLIST")){
+                    String customerID = requestArgs[1];
+                    String itemID = requestArgs[2];
+                    this.addLocalCustomerWaitList(customerID, itemID);
+                }else if(requestArgs[0].equals("FIND-ITEM")){
+                    String itemName = requestArgs[1];
+                    replyMessage = this.LocalFindItem(itemName);
+                } else if(requestArgs[0].equals("GET-ITEM")){
+                    replyMessage = this.itemStore.get(requestArgs[1].trim());
+                }else if(requestArgs[0].equals("RETURN")){
+                    String itemID = requestArgs[1];
+                    String customerID = requestArgs[2];
+                    String dateOfReturn = requestArgs[3];
+                    replyMessage = this.ForeignReturnItem(customerID, itemID, dateOfReturn);
+                }
+                else if(requestArgs[0].equals("PURCHASE-ITEM")){
+                    String customerID = requestArgs[1];
+                    String itemID = requestArgs[2];
+                    String date = requestArgs[3];
+                    replyMessage = this.purchaseItem(customerID, itemID, date);
+                }
+                else if(requestArgs[0].equals("VALIDATE-RECEIPT")){
+                    String customerID = requestArgs[1];
+                    String itemID = requestArgs[2];
+                    String date = requestArgs[3];
+                    replyMessage = String.valueOf(this.validateReceipt(customerID, itemID, date));
+                }
+                DatagramPacket reply = new DatagramPacket(replyMessage.getBytes(), replyMessage.length(), request.getAddress(),request.getPort());
+                aSocket.send(reply);
+                buffer = new byte[1000];
+            }
+        } catch (SocketException e) {
+            System.out.println("Socket: " + e.getMessage());
+        } catch (IOException e) {
+            System.out.println("IO: " + e.getMessage());
+        } finally {
+            if (aSocket != null)
+                aSocket.close();
+        }
+    }
 
 }
