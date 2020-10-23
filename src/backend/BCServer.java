@@ -15,7 +15,7 @@ import org.omg.PortableServer.POA;
 import org.omg.PortableServer.POAHelper;
 
 
-public class QCServer {
+public class BCServer {
     public static void main(String[] args) {
         try{
 
@@ -33,10 +33,10 @@ public class QCServer {
 
             NamingContextExt ncRef= NamingContextExtHelper.narrow(objRef);
 
-            String name = "QC";
+            String name = "BC";
             NameComponent path[] = ncRef.to_name( name );
             ncRef.rebind(path, href);
-            System.out.println("QC Store running.");
+            System.out.println("BC Store running.");
 
             Runnable task = () -> {
 				try {
@@ -54,7 +54,7 @@ public class QCServer {
             System.err.println("ERROR: " + e);
             e.printStackTrace(System.out);
         }
-        System.out.println("QC Store closing.");
+        System.out.println("BC Store closing.");
     }
 }
 
