@@ -10,7 +10,7 @@ package StoreApp;
 
 public interface DSMSOperations 
 {
-  boolean addItem (String managerID, String itemID, String itemName, int quantity, int price);
+  boolean addItem (String managerID, String itemID, String itemName, int quantity, long price);
   boolean removeItem (String managerID, String itemID, int quantity);
   String listItemAvailability (String managerID);
   String purchaseItem (String customerID, String itemID, String dateOfPurchase);

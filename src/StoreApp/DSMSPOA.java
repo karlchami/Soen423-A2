@@ -47,7 +47,7 @@ public abstract class DSMSPOA extends org.omg.PortableServer.Servant
          String itemID = in.read_string ();
          String itemName = in.read_string ();
          int quantity = in.read_long ();
-         int price = in.read_long ();
+         long price = in.read_long ();
          boolean $result = false;
          $result = this.addItem (managerID, itemID, itemName, quantity, price);
          out = $rh.createReply();

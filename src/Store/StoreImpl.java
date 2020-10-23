@@ -15,6 +15,7 @@ import java.util.logging.FileHandler;
 import java.util.logging.Logger;
 import java.util.logging.SimpleFormatter;
 import java.net.SocketException;
+import java.text.ParseException;
 import java.util.*;
 
 
@@ -57,7 +58,7 @@ public class StoreImpl extends DSMSPOA {
         return logger;
     }
 	@Override
-	public synchronized boolean addItem(String managerID, String itemID, String itemName, int quantity, int price) {
+	public synchronized boolean addItem(String managerID, String itemID, String itemName, int quantity, long price) {
 		// If item already exists in store modify quantity
         if (this.itemStore.containsKey(itemID)) {
             String[] item_details = this.itemStore.get(itemID).split(",");
@@ -252,10 +253,86 @@ public class StoreImpl extends DSMSPOA {
         }
         return found_items;
 	}
+	public boolean validateReceipt(String customerID, String itemID, String date) throws ParseException {
+        for(String receipt : this.purchaseLog){
+            String[] receipt_details = receipt.split(",");
+            String log_itemID = receipt_details[0];
+            String log_customerID = receipt_details[0];
+            Date purchase_date = java.text.DateFormat.getDateInstance().parse(receipt_details[2]); 
+            long return_range = 30l * 24 * 60 * 60 * 1000;
+            Date limit_date = new Date(purchase_date.getTime() + return_range);
+            Date return_date = java.text.DateFormat.getDateInstance().parse(date); 
+            // If receipt item matches with client and returned itemID
+            if(log_itemID.equals(itemID) && log_customerID.equals(customerID)) {
+                if (return_date.compareTo(limit_date) < 0) {
+                    return true;
+                }
+            }
+        }
+        return false;
+	}
+    public String ForeignReturnItem(String customerID, String itemID, String dateOfReturn) throws NumberFormatException, ParseException {
+        // Validate if this return is eligible by checking store receipts
+    	if(this.validateReceipt(customerID, itemID, dateOfReturn)){
+            String[] item_details = this.itemStore.get(itemID).split(",");
+            long item_price = Long.parseLong(item_details[2]);
+         // Requires manager to add item back
+            this.addItem("RETURN", itemID, item_details[0], 1, item_price);
+            logger.info("Customer " + customerID + " returned " + itemID + "on " + dateOfReturn);
+            // Return refund amount
+            String refund_amount = this.itemStore.get(itemID).split(",")[1];
+            return "SUCCESS,"+ refund_amount;
+        }
+        else{
+            return "FAILED";
+        }
+    }
 	@Override
 	public boolean returnItem(String customerID, String itemID, String dateOfReturn) {
-		// TODO Auto-generated method stub
-		return false;
+        Customer customer = this.Customers.get(customerID);
+        String item_store = itemID.substring(0,2); 
+        String current_store = this.store.toString();
+        // If item to be returned in local store
+        if(item_store.equals(current_store)){
+            try {
+				if(this.validateReceipt(customerID, itemID, dateOfReturn)){
+				    String[] item_details = this.itemStore.get(itemID).split(",");
+				    long item_price = Long.parseLong(item_details[2]);
+				    // Requires manager to add item back
+				    this.addItem("RETURN", itemID, item_details[0], 1, item_price);
+				    // Refund the customer
+				    long current_balance = customer.getBalance();
+				    customer.setBalance(current_balance + item_price);
+				    logger.info("Customer " + customerID + " returned " + itemID + "on " + dateOfReturn);
+				    return true;
+				}
+				else{
+					// If not valid receipt do not return item
+				    return false;
+				}
+			} catch (NumberFormatException | ParseException e) {
+				// TODO Auto-generated catch block
+				e.printStackTrace();
+			}
+        }
+        else{
+        	// If item to be returned in a foreign store
+            int port = this.ports.get(item_store);
+            logger.info("Store Server sending UDP request to return item...");
+            String response = this.sendCommand(port,"RETURN," + itemID + "," + customerID + "," + dateOfReturn);
+            if(response.startsWith("FALSE")){
+                return false;
+            }
+            else if(response.startsWith("TRUE")){
+                String[] item_details = this.itemStore.get(itemID).split(",");
+                long item_price = Long.parseLong(item_details[2]);
+                long current_balance = customer.getBalance();
+                customer.setBalance(current_balance + item_price);
+                logger.info("Customer " + customerID + " returned " + itemID + "on " + dateOfReturn);
+                return true;
+            }
+        }
+        return false;
 	}
 	@Override
 	public boolean exchangeItem(String customerID, String newitemID, String oldItemID, String dateOfExchange) {
