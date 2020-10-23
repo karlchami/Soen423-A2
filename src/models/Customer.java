@@ -10,7 +10,7 @@ public class Customer {
         this.store = store;
         this.balance = 1000;
     }
-    public String getID(){
+    public String getCustomerID(){
         return this.customerID;
     }
     public long getBalance(){

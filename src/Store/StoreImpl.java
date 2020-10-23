@@ -515,5 +515,4 @@ public class StoreImpl extends DSMSPOA {
                 aSocket.close();
         }
     }
-
 }
