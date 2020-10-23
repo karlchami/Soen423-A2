@@ -295,6 +295,7 @@ public class StoreImpl extends DSMSPOA {
         // If item to be returned in local store
         if(item_store.equals(current_store)){
             try {
+            	// Validate if this return is eligible by checking store receipts
 				if(this.validateReceipt(customerID, itemID, dateOfReturn)){
 				    String[] item_details = this.itemStore.get(itemID).split(",");
 				    long item_price = Long.parseLong(item_details[2]);
@@ -336,23 +337,93 @@ public class StoreImpl extends DSMSPOA {
 	}
 	@Override
 	public boolean exchangeItem(String customerID, String newitemID, String oldItemID, String dateOfExchange) {
-		// TODO Auto-generated method stub
-		return false;
+        int oldItemPrice = 0;
+        int newItemPrice = 0;
+		// If item to be exchanged is in local store
+        if(oldItemID.startsWith(this.store.toString())){
+        	// Validate if this return is eligible by checking store receipts
+            try {
+				if(!this.validateReceipt(customerID, oldItemID, dateOfExchange)){
+				    this.logger.info("Cannot exchange unbought item.");
+				    return false;
+				}
+			} catch (ParseException e) {
+				// TODO Auto-generated catch block
+				e.printStackTrace();
+			}
+            String[] item_details = this.itemStore.get(oldItemID).split(",");
+            oldItemPrice = Integer.parseInt(item_details[2]);
+        }
+        else{
+        	String item_store = oldItemID.substring(0,2);
+            if(this.sendCommand(this.ports.get(item_store), "VALIDATE-RECEIPT," + customerID + "," + oldItemID + "," + dateOfExchange).equals("false")){
+                this.logger.info("Cannot exchange unbought item.");
+                return false;
+            }
+            String[] item_details = this.sendCommand(this.ports.get(oldItemID.substring(0,2)), "GET-ITEM," + oldItemID).trim().split(",");
+            oldItemPrice = Integer.parseInt(item_details[2]);
+        }
+        if(newitemID.startsWith(this.store.toString())){
+            String[] item_details = this.itemStore.get(newitemID).split(",");
+            if(Integer.parseInt(item_details[1]) == 0){
+                this.logger.info("Item is out of stock.");
+                return false;
+            }
+            newItemPrice = Integer.parseInt(item_details[2]);
+        }
+        else{
+            String[] item_details = this.sendCommand(this.ports.get(newitemID.substring(0,2)), "GET-ITEM," + newitemID).trim().split(",");
+            if(Integer.parseInt(item_details[1]) == 0){
+                this.logger.info("Item is out of stock.");
+                return false;
+            }
+            newItemPrice = Integer.parseInt(item_details[2]);
+        }
+        //check budget
+        Customer customer = this.Customers.get(customerID);
+        long different_to_pay = newItemPrice-oldItemPrice;
+        if(customer.getBalance() < different_to_pay){
+            this.logger.info("Insufficient funds to perform the exchange.");
+            return false;
+        }
+        this.returnItem(customerID, oldItemID, dateOfExchange);
+        this.purchaseItem(customerID, newitemID, dateOfExchange);
+        return true;
+	}
+	public void addLocalCustomerWaitList(String customerID, String itemID) {
+		// Check if wait-list for item exist and add customer to it
+        if (this.itemWaitList.containsKey(itemID)) {
+            this.itemWaitList.get(itemID).add(customerID);
+        } else {
+        	// Create a new key for item if does not exist
+            PriorityQueue<String> queue = new PriorityQueue<String>();
+            queue.add(customerID);
+            this.itemWaitList.put(itemID, queue);
+        }
+        logger.info("Added " + customerID + "to the waitlist");		
 	}
 	@Override
 	public void addCustomerWaitList(String customerID, String itemID) {
-		// TODO Auto-generated method stub
-		
+		// If item belongs to local store then add to local wait list
+        if (itemID.substring(0, 2).equals(this.store.toString())) {
+            this.addLocalCustomerWaitList(customerID, itemID);
+        }
+        else{
+        	// If item belongs to foreign store then add to foreign wait list
+            int port = this.ports.get(itemID.substring(0,2));
+            String message = "WAITLIST," + customerID + "," + itemID;
+            this.sendCommand(port,message);
+        }
 	}
 	@Override
 	public void addCustomer(String customerID) {
-		// TODO Auto-generated method stub
-		
+        Customer customer = new Customer(customerID, this.store);
+        this.Customers.put(customerID, customer);
 	}
 	@Override
 	public void addManager(String managerID) {
-		// TODO Auto-generated method stub
-		
+        Manager manager = new Manager(managerID, this.store);
+        this.Managers.put(managerID, manager);
 	}
 	@Override
 	public void shutdown() {
@@ -360,8 +431,31 @@ public class StoreImpl extends DSMSPOA {
 		
 	}
 	private String sendCommand(int port, String message) {
-		return message;
-		// TODO Auto-generated method stub
+        DatagramSocket aSocket = null;
+        String response = null;
+        try {
+            aSocket = new DatagramSocket();
+            byte[] cmd = message.getBytes();
+            InetAddress aHost = InetAddress.getByName("localhost");
+            DatagramPacket request = new DatagramPacket(cmd, message.length(), aHost, port);
+            aSocket.send(request);
+            System.out.println("Command sent to respective store server " + port + " is: " + new String(request.getData()));
+            byte[] buffer = new byte[1000];
+            DatagramPacket reply = new DatagramPacket(buffer, buffer.length);
+            aSocket.receive(reply);
+            response = new String(reply.getData());
+            System.out.println("Response received from the respective store server " + port + " is: " + new String(reply.getData()));
+        } catch (SocketException e) {
+            System.out.println("Socket: " + e.getMessage());
+        } catch (IOException e) {
+            e.printStackTrace();
+            System.out.println("IO: " + e.getMessage());
+        } finally {
+            if (aSocket != null)
+                aSocket.close();
+
+        }
+        return response;
 		
 	}
 
