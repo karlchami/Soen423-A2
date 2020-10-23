@@ -57,7 +57,7 @@ public class StoreImpl extends DSMSPOA {
         return logger;
     }
 	@Override
-	public boolean addItem(String managerID, String itemID, String itemName, int quantity, int price) {
+	public synchronized boolean addItem(String managerID, String itemID, String itemName, int quantity, int price) {
 		// If item already exists in store modify quantity
         if (this.itemStore.containsKey(itemID)) {
             String[] item_details = this.itemStore.get(itemID).split(",");
@@ -93,7 +93,7 @@ public class StoreImpl extends DSMSPOA {
         return true;
 	}
 	@Override
-	public boolean removeItem(String managerID, String itemID, int quantity) {
+	public synchronized boolean removeItem(String managerID, String itemID, int quantity) {
 		// If item exists in itemStore
         if (this.itemStore.containsKey(itemID)) {
         	// If quantity set to 0 means remove item
@@ -129,7 +129,7 @@ public class StoreImpl extends DSMSPOA {
         }
 	}
 	@Override
-	public String listItemAvailability(String managerID) {
+	public synchronized String listItemAvailability(String managerID) {
         logger.info("Manager " + managerID + " requested a list of all items in " + this.store + " store.");
         String item_availability = "";
         for (Map.Entry<String,String> entry: this.itemStore.entrySet()){
@@ -137,15 +137,120 @@ public class StoreImpl extends DSMSPOA {
         }
         return item_availability;
 	}
-	@Override
-	public String purchaseItem(String customerID, String itemID, String dateOfPurchase) {
-		// TODO Auto-generated method stub
-		return null;
+	// Local customer item purchase
+	public String LocalPurchaseItem(String customerID, String itemID, String dateOfPurchase) {
+        Customer customer = Customers.get(customerID);
+        long available_balance = customer.getBalance(); 
+        // If item is in the store
+        if (this.itemStore.containsKey(itemID)) {
+            String[] item_details = this.itemStore.get(itemID).split(",");
+            int current_quantity = Integer.parseInt(item_details[1]);
+            long price = Long.parseLong(item_details[2]);
+            // If item is available
+            if(current_quantity > 0){
+            	long remaining_balance = available_balance - price;
+            	// If customer has enough funds to buy item
+                if(remaining_balance >= 0){
+                	// Set new customer balance
+                    customer.setBalance(remaining_balance);
+                    // Decrement item quantity by 1
+                    item_details[1] = Integer.toString(current_quantity - 1);
+                    itemStore.replace(itemID, String.join(",", item_details));
+                    this.purchaseLog.add(itemID + "," + customerID + "," + dateOfPurchase);
+                    logger.info("Customer " + customerID + " purchased item " + itemID + " successfully on " + dateOfPurchase);
+                    return "Purchased";
+                }
+                else{
+                	logger.info("Customer " + customerID + " was not able to purchase item " + itemID + " due to insufficient funds.");
+                    return "Insufficient funds";
+                }
+            }
+            else{
+                logger.info(itemID + "is out of stock");
+                return "Out of stock";
+            }
+        } else {
+            System.out.println("Item " + itemID + " does not exist in store " + this.store);
+            return "Does not exist";
+        }
+	}
+	// Foreign customer item purchase
+	public String ForeignPurchaseItem(String customerID, long balance, String itemID, String dateOfPurchase) {
+		// If item exists in foreign store
+        if (this.itemStore.containsKey(itemID)) {
+            String[] item_details = this.itemStore.get(itemID).split(",");
+            int current_quantity = Integer.parseInt(item_details[1]);
+            long price = Long.parseLong(item_details[2]);
+            if(current_quantity > 0){
+            	long remaining_balance = balance - price;
+                if(remaining_balance >= 0){
+                    item_details[1] = Integer.toString(current_quantity - 1);
+                    itemStore.replace(itemID, String.join(",", item_details));
+                    this.purchaseLog.add(itemID + "," + customerID + "," + dateOfPurchase);
+                    return "Purchased," + remaining_balance;
+                }
+                else{
+                    return "Insufficient funds";
+                }
+            }
+            else{
+                return "Out of stock";
+            }
+        } else {
+            System.out.println("Item " + itemID + " does not exist in store " + this.store);
+            return "Does not exist";
+        }
 	}
 	@Override
-	public String findItem(String customerID, String itemName) {
-		// TODO Auto-generated method stub
-		return null;
+	public synchronized String purchaseItem(String customerID, String itemID, String dateOfPurchase) {
+        String purchase_store = itemID.substring(0,2);
+        Customer customer = this.Customers.get(customerID);
+        String current_store = this.store.toString();
+        // If purchase is local
+        if (purchase_store.equals(current_store)) {
+            logger.info("Customer " + customerID + " purchasing an item in local store " + this.store);
+            return this.LocalPurchaseItem(customerID, itemID, dateOfPurchase);
+        } else {
+        	// If purchase is foreign send purchase request to the UDP server for the specific store
+            logger.info("Customer " + customerID + " purchasing an item in foreign store " + purchase_store);
+                logger.info("Sending UDP command to " + purchase_store + " store...");
+                String cmd = "PURCHASE-ITEM" + "," + customerID + "," + customer.getBalance() + "," + itemID + "," + dateOfPurchase;
+                String response = this.sendCommand(this.ports.get(itemID.substring(0, 2)), cmd);
+                if (response.startsWith("Purchased")) {
+                    long remaining_balance = Long.parseLong(response.split(",")[1].trim());
+                    customer.setBalance(remaining_balance);
+                    return ("Successfully purchased.");
+                } else {
+                    return response;
+                }
+            }
+    }
+	public String LocalFindItem(String itemName) {
+        String no_found_items = "";
+        for (Map.Entry<String, String> entry : this.itemStore.entrySet()) {
+            String name = entry.getValue().split(",")[0];
+            if (itemName.trim().equals(name)) {
+                return entry.getKey();
+            }
+        }
+        return no_found_items;
+	}
+	@Override
+	public synchronized String findItem(String customerID, String itemName) {
+		// Get all items in local store
+        String found_items = "";
+        for(Map.Entry<String,Integer> entry: this.ports.entrySet()){
+            if(entry.getKey().equals(this.store.toString())){
+            	found_items = found_items + ";" + this.LocalFindItem(itemName);
+            }
+            String cmd = "FIND-ITEM," + itemName;
+            logger.info("Store server sending UDP request to find item.");
+            found_items = found_items + ";" + this.sendCommand(entry.getValue(), cmd);
+            if(found_items.equals("")){
+                return "No item found with name " + itemName;
+            }
+        }
+        return found_items;
 	}
 	@Override
 	public boolean returnItem(String customerID, String itemID, String dateOfReturn) {
@@ -177,7 +282,8 @@ public class StoreImpl extends DSMSPOA {
 		// TODO Auto-generated method stub
 		
 	}
-	private void sendCommand(int port, String message) {
+	private String sendCommand(int port, String message) {
+		return message;
 		// TODO Auto-generated method stub
 		
 	}
