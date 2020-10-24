@@ -17,11 +17,11 @@ public class ManagerClient{
     static DSMS dsms;
     private String managerID;
     private Store store;
-    private static Logger logger = null;
-    public void Manager(String managerID, Store store) throws Exception {
+    private Logger logger = null;
+    public ManagerClient(String managerID, Store store) throws Exception {
         this.managerID = managerID;
         this.store = store;
-        this.logger = this.launchLogger();
+        this.logger = launchLogger();
     }
     public Logger launchLogger() {
         Logger logger = Logger.getLogger("ManagerLog");
@@ -61,14 +61,14 @@ public class ManagerClient{
         String IDNumber = scanner.next();
         String clientID = store.toString() + "M" + IDNumber;
         System.out.println("Manager ID: " + clientID);
-        Manager manager = new Manager(clientID, store);
+        ManagerClient manager = new ManagerClient(clientID, store);
         try{
             String[] arguments = new String[] {"-ORBInitialPort","1234","-ORBInitialHost","localhost"};
             ORB orb = ORB.init(arguments, null);
             org.omg.CORBA.Object objRef = orb.resolve_initial_references("NameService");
             NamingContextExt ncRef = NamingContextExtHelper.narrow(objRef);
-            dsms = (DSMS) DSMSHelper.narrow(ncRef.resolve_str(manager.getStore().toString()));
-            dsms.addCustomer(manager.getManagerID());
+            dsms = (DSMS) DSMSHelper.narrow(ncRef.resolve_str(manager.store.toString()));
+            dsms.addCustomer(manager.managerID);
             int customerOption;
             String itemID;
             String itemName;
@@ -91,8 +91,8 @@ public class ManagerClient{
                         price = scanner.nextInt();
                         System.out.println("Enter quantity:");
                         quantity = scanner.nextInt();
-                        logger.info("Manager client with ID: "+ manager.getManagerID() +" " + "attempt to add item: "+itemID);
-                        dsms.addItem(manager.getManagerID(), itemID, itemName, quantity, price);
+                        manager.logger.info("Manager client with ID: "+ manager.managerID +" " + "attempt to add item: "+itemID);
+                        dsms.addItem(manager.managerID, itemID, itemName, quantity, price);
                         System.out.println("Added item successfully");
                         break;
                     case 2:
@@ -101,14 +101,14 @@ public class ManagerClient{
                         itemID = scanner.next();
                         System.out.println("Enter quantity:");
                         quantity = scanner.nextInt();
-                        logger.info("Manager ID "+ manager.getManagerID() + " " + "attempt to remove: "+itemID);
-                        dsms.removeItem(manager.getManagerID(), itemID, quantity);
+                        manager.logger.info("Manager ID "+ manager.managerID + " " + "attempt to remove: "+itemID);
+                        dsms.removeItem(manager.managerID, itemID, quantity);
                         System.out.println("Removed item successfully");
                         break;
                     case 3:
                         System.out.println("----LIST AVAILABE ITEM----");
-                        logger.info("Manager "+ manager.getManagerID() + " " + "attempt to view available items.");
-                        System.out.println(dsms.listItemAvailability(manager.getManagerID()));
+                        manager.logger.info("Manager "+ manager.managerID + " " + "attempt to view available items.");
+                        System.out.println(dsms.listItemAvailability(manager.managerID));
                         break;
                 }
             }

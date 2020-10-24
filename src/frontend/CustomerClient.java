@@ -3,9 +3,8 @@ package frontend;
 import StoreApp.DSMS;
 import StoreApp.DSMSHelper;
 import models.Store;
-import org.omg.CORBA.ORB;
-import org.omg.CosNaming.NamingContextExt;
-import org.omg.CosNaming.NamingContextExtHelper;
+import org.omg.CosNaming.*;
+import org.omg.CORBA.*;
 
 import java.io.IOException;
 import java.text.ParseException;
@@ -31,7 +30,7 @@ public class CustomerClient {
         Logger logger = Logger.getLogger("CustomerLog");
         FileHandler fh;
         try {
-            fh = new FileHandler("src/logs/client/" + this.customerID + ".log");
+            fh = new FileHandler("C:\\Users\\karlc\\Desktop\\soen423-a2\\src\\logs\\client\\" + this.customerID + ".log");
             logger.addHandler(fh);
             SimpleFormatter formatter = new SimpleFormatter();
             fh.setFormatter(formatter);
@@ -46,7 +45,7 @@ public class CustomerClient {
 
     public static void main(String[] args) throws ParseException {
         Scanner scanner = new Scanner(System.in);
-        System.out.println("Please choose your province: QC, ON, BC");
+        System.out.println("Enter Store location (QC, ON, BC): ");
         String input = scanner.next();
         Store store = null;
         switch (input) {
